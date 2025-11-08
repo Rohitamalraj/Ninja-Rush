@@ -43,8 +43,10 @@ export default class BootScene extends Phaser.Scene {
       percentText.destroy();
     });
     
-    // TODO: Load actual game assets here
-    // For now, we'll create placeholder graphics
+    // Load game assets
+    this.loadGameAssets();
+    
+    // Create placeholder assets for items that don't have images yet
     this.createPlaceholderAssets();
   }
 
@@ -53,30 +55,22 @@ export default class BootScene extends Phaser.Scene {
     this.scene.start(SCENES.MENU);
   }
   
-  private createPlaceholderAssets() {
-    // Create enhanced placeholder sprites with more detail
+  private loadGameAssets() {
+    // Load character sprites
+    this.load.image('player', '/assets/images/ninja.png');
     
-    // Player sprite - Ninja silhouette
-    const playerGraphics = this.add.graphics();
-    // Body (green ninja)
-    playerGraphics.fillStyle(0x2d5016, 1);
-    playerGraphics.fillRect(8, 12, 16, 24);
-    // Head
-    playerGraphics.fillStyle(0x3a6b1f, 1);
-    playerGraphics.fillCircle(16, 10, 8);
-    // Eyes (glowing)
-    playerGraphics.fillStyle(0xffffff, 1);
-    playerGraphics.fillCircle(13, 9, 2);
-    playerGraphics.fillCircle(19, 9, 2);
-    // Arms
-    playerGraphics.fillStyle(0x2d5016, 1);
-    playerGraphics.fillRect(4, 16, 6, 12);
-    playerGraphics.fillRect(22, 16, 6, 12);
-    // Legs
-    playerGraphics.fillRect(10, 36, 5, 10);
-    playerGraphics.fillRect(17, 36, 5, 10);
-    playerGraphics.generateTexture('player', 32, 48);
-    playerGraphics.destroy();
+    // Load enemy sprites
+    this.load.image('enemy-basic', '/assets/images/basic_rouge.png');
+    this.load.image('enemy-fast', '/assets/images/fast_rouge.png');
+    this.load.image('enemy-armored', '/assets/images/armoured_rouge.png');
+    this.load.image('enemy-boss', '/assets/images/boss_rouge.png');
+    
+    // Load background
+    this.load.image('game-background', '/assets/images/background_for_playing_screen.jpg');
+  }
+  
+  private createPlaceholderAssets() {
+    // Create placeholder sprites for items without images
     
     // Shuriken sprite - 4-pointed star
     const shurikenGraphics = this.add.graphics();
@@ -97,69 +91,6 @@ export default class BootScene extends Phaser.Scene {
     shurikenGraphics.fillCircle(8, 8, 2);
     shurikenGraphics.generateTexture('shuriken', 16, 16);
     shurikenGraphics.destroy();
-    
-    // Basic enemy - Simple rogue
-    const basicEnemyGraphics = this.add.graphics();
-    basicEnemyGraphics.fillStyle(0x8b0000, 1);
-    basicEnemyGraphics.fillRect(8, 8, 16, 16);
-    // Eyes
-    basicEnemyGraphics.fillStyle(0xff0000, 1);
-    basicEnemyGraphics.fillCircle(13, 13, 2);
-    basicEnemyGraphics.fillCircle(19, 13, 2);
-    // Shadow
-    basicEnemyGraphics.fillStyle(0x000000, 0.3);
-    basicEnemyGraphics.fillEllipse(16, 28, 16, 4);
-    basicEnemyGraphics.generateTexture('enemy-basic', 32, 32);
-    basicEnemyGraphics.destroy();
-    
-    // Fast enemy - Streamlined
-    const fastEnemyGraphics = this.add.graphics();
-    fastEnemyGraphics.fillStyle(0xff4444, 1);
-    // Elongated body for speed
-    fastEnemyGraphics.fillRect(6, 6, 16, 16);
-    fastEnemyGraphics.fillTriangle(22, 10, 22, 18, 28, 14);
-    // Glowing eyes
-    fastEnemyGraphics.fillStyle(0xffff00, 1);
-    fastEnemyGraphics.fillCircle(12, 12, 2);
-    fastEnemyGraphics.fillCircle(17, 12, 2);
-    fastEnemyGraphics.generateTexture('enemy-fast', 28, 28);
-    fastEnemyGraphics.destroy();
-    
-    // Armored enemy - Larger with armor plating
-    const armoredEnemyGraphics = this.add.graphics();
-    // Armor plating
-    armoredEnemyGraphics.fillStyle(0x2a6f7f, 1);
-    armoredEnemyGraphics.fillRect(8, 8, 24, 24);
-    armoredEnemyGraphics.fillStyle(0x4ecdc4, 1);
-    armoredEnemyGraphics.fillRect(10, 10, 20, 20);
-    // Helmet
-    armoredEnemyGraphics.fillStyle(0x2a6f7f, 1);
-    armoredEnemyGraphics.fillRect(12, 12, 16, 8);
-    // Eyes
-    armoredEnemyGraphics.fillStyle(0xff0000, 1);
-    armoredEnemyGraphics.fillCircle(16, 16, 2);
-    armoredEnemyGraphics.fillCircle(24, 16, 2);
-    armoredEnemyGraphics.generateTexture('enemy-armored', 40, 40);
-    armoredEnemyGraphics.destroy();
-    
-    // Boss enemy - Large and menacing
-    const bossEnemyGraphics = this.add.graphics();
-    // Body
-    bossEnemyGraphics.fillStyle(0x8b008b, 1);
-    bossEnemyGraphics.fillRect(8, 12, 32, 32);
-    // Crown/horns
-    bossEnemyGraphics.fillStyle(0xff00ff, 1);
-    bossEnemyGraphics.fillTriangle(10, 12, 15, 4, 20, 12);
-    bossEnemyGraphics.fillTriangle(28, 12, 33, 4, 38, 12);
-    // Eyes (glowing)
-    bossEnemyGraphics.fillStyle(0xffffff, 1);
-    bossEnemyGraphics.fillCircle(18, 22, 3);
-    bossEnemyGraphics.fillCircle(30, 22, 3);
-    bossEnemyGraphics.fillStyle(0xff0000, 1);
-    bossEnemyGraphics.fillCircle(18, 22, 2);
-    bossEnemyGraphics.fillCircle(30, 22, 2);
-    bossEnemyGraphics.generateTexture('enemy-boss', 48, 48);
-    bossEnemyGraphics.destroy();
     
     // Power-ups with icons
     const powerupTypes = [

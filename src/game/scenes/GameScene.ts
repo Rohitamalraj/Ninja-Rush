@@ -127,99 +127,17 @@ export default class GameScene extends Phaser.Scene {
   private createBackground() {
     const { width, height } = this.cameras.main;
     
-    // Night sky gradient
-    const graphics = this.add.graphics();
-    graphics.fillGradientStyle(0x0a0a1a, 0x0a0a1a, 0x2a1a3a, 0x1a0a2a, 1);
-    graphics.fillRect(0, 0, width, height);
+    // Use the loaded background image
+    const bg = this.add.image(width / 2, height / 2, 'game-background');
     
-    // Red moon
-    const moon = this.add.circle(width - 150, 100, 40, 0xff4444, 0.8);
-    moon.setStrokeStyle(2, 0xff6666, 0.5);
+    // Scale the background to cover the entire game area
+    const scaleX = width / bg.width;
+    const scaleY = height / bg.height;
+    const scale = Math.max(scaleX, scaleY);
+    bg.setScale(scale);
     
-    // Moon glow
-    const moonGlow = this.add.circle(width - 150, 100, 50, 0xff4444, 0.2);
-    this.tweens.add({
-      targets: moonGlow,
-      scale: 1.2,
-      alpha: 0.1,
-      duration: 2000,
-      yoyo: true,
-      repeat: -1,
-      ease: 'Sine.easeInOut'
-    });
-    
-    // Stars (more numerous and twinkling)
-    for (let i = 0; i < 150; i++) {
-      const x = Phaser.Math.Between(0, width);
-      const y = Phaser.Math.Between(0, height / 2);
-      const size = Phaser.Math.FloatBetween(0.5, 2);
-      const star = this.add.circle(x, y, size, 0xffffff, Phaser.Math.FloatBetween(0.4, 0.9));
-      
-      // Twinkling
-      this.tweens.add({
-        targets: star,
-        alpha: Phaser.Math.FloatBetween(0.2, 0.4),
-        duration: Phaser.Math.Between(1000, 3000),
-        yoyo: true,
-        repeat: -1
-      });
-    }
-    
-    // Mountain silhouettes
-    const mountainGraphics = this.add.graphics();
-    mountainGraphics.fillStyle(0x1a1a2a, 0.8);
-    
-    // Back mountains
-    mountainGraphics.beginPath();
-    mountainGraphics.moveTo(0, height * 0.6);
-    mountainGraphics.lineTo(100, height * 0.4);
-    mountainGraphics.lineTo(250, height * 0.5);
-    mountainGraphics.lineTo(400, height * 0.35);
-    mountainGraphics.lineTo(600, height * 0.45);
-    mountainGraphics.lineTo(width, height * 0.55);
-    mountainGraphics.lineTo(width, height);
-    mountainGraphics.lineTo(0, height);
-    mountainGraphics.closePath();
-    mountainGraphics.fillPath();
-    
-    // Front mountains (darker)
-    mountainGraphics.fillStyle(0x0d0d1a, 0.9);
-    mountainGraphics.beginPath();
-    mountainGraphics.moveTo(0, height * 0.7);
-    mountainGraphics.lineTo(150, height * 0.55);
-    mountainGraphics.lineTo(350, height * 0.65);
-    mountainGraphics.lineTo(550, height * 0.5);
-    mountainGraphics.lineTo(width, height * 0.6);
-    mountainGraphics.lineTo(width, height);
-    mountainGraphics.lineTo(0, height);
-    mountainGraphics.closePath();
-    mountainGraphics.fillPath();
-    
-    // Ground/platform
-    const ground = this.add.rectangle(width / 2, height - 30, width, 60, 0x1a1a2a, 0.8);
-    ground.setStrokeStyle(2, 0x2a2a3a, 0.6);
-    
-    // Add some fog/mist at the bottom
-    for (let i = 0; i < 5; i++) {
-      const fog = this.add.ellipse(
-        Phaser.Math.Between(0, width),
-        height - Phaser.Math.Between(20, 60),
-        Phaser.Math.Between(100, 200),
-        Phaser.Math.Between(20, 40),
-        0xffffff,
-        0.05
-      );
-      
-      this.tweens.add({
-        targets: fog,
-        x: fog.x + Phaser.Math.Between(-50, 50),
-        alpha: 0.1,
-        duration: Phaser.Math.Between(3000, 5000),
-        yoyo: true,
-        repeat: -1,
-        ease: 'Sine.easeInOut'
-      });
-    }
+    // Add a subtle overlay for better contrast with game elements
+    const overlay = this.add.rectangle(width / 2, height / 2, width, height, 0x000000, 0.2);
   }
 
   private createUI() {
