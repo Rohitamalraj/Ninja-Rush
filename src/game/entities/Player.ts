@@ -22,6 +22,10 @@ export default class Player extends Phaser.Physics.Arcade.Sprite {
     scene.add.existing(this);
     scene.physics.add.existing(this);
     
+  // Fix sprite sizing: use absolute display size so source image dimensions don't break layout
+  // Slightly smaller than before to keep character compact
+  this.setDisplaySize(48, 64);
+    
     // Setup physics
     this.setCollideWorldBounds(true);
     this.setImmovable(false);
@@ -108,6 +112,8 @@ export default class Player extends Phaser.Physics.Arcade.Sprite {
 
   private createShuriken(x: number, y: number) {
     const shuriken = this.scene.physics.add.sprite(x, y, 'shuriken');
+    // Ensure shuriken is a small consistent size
+    shuriken.setDisplaySize(12, 12);
     shuriken.setVelocityY(-GAME_CONFIG.SHURIKEN_SPEED);
     
     // Add rotation animation
