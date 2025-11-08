@@ -29,16 +29,16 @@ export default class Enemy extends Phaser.Physics.Arcade.Sprite {
     scene.physics.add.existing(this);
     
     // Use fixed display sizes so large source images don't overflow the screen.
-    // Slightly scale down characters for visual balance.
+    // Increased sizes for better visibility
     if (type === 'boss') {
-      this.setDisplaySize(80, 80);
+      this.setDisplaySize(100, 100);
     } else if (type === 'armored') {
-      this.setDisplaySize(56, 56);
+      this.setDisplaySize(70, 70);
     } else if (type === 'fast') {
-      this.setDisplaySize(44, 44);
+      this.setDisplaySize(55, 55);
     } else {
       // basic
-      this.setDisplaySize(48, 48);
+      this.setDisplaySize(60, 60);
     }
     
     this.setTint(config.color);

@@ -437,7 +437,7 @@ export default class GameScene extends Phaser.Scene {
     // Stop physics and disable inputs
     this.physics.pause();
     
-    // Clean up groups properly before scene transition
+    // Clean up groups properly
     if (this.enemies) {
       this.enemies.clear(true, true);
     }
@@ -447,6 +447,7 @@ export default class GameScene extends Phaser.Scene {
     
     // Save high score
     const highScore = parseInt(localStorage.getItem('ninjaRush_highScore') || '0');
+    const finalHighScore = Math.max(this.score, highScore);
     if (this.score > highScore) {
       localStorage.setItem('ninjaRush_highScore', this.score.toString());
     }
@@ -455,10 +456,128 @@ export default class GameScene extends Phaser.Scene {
     const totalGames = parseInt(localStorage.getItem('ninjaRush_totalGames') || '0');
     localStorage.setItem('ninjaRush_totalGames', (totalGames + 1).toString());
     
-    // Use a small delay to ensure cleanup is complete
-    this.time.delayedCall(100, () => {
-      // Pass score to game over scene
-      this.scene.start(SCENES.GAMEOVER, { score: this.score, highScore: Math.max(this.score, highScore) });
+    // Show game over overlay on the same scene
+    this.showGameOverOverlay(finalHighScore);
+  }
+
+  private showGameOverOverlay(highScore: number) {
+    const { width, height } = this.cameras.main;
+    
+    // Lighter overlay to keep background slightly visible
+    const overlay = this.add.rectangle(width / 2, height / 2, width, height, 0x000000, 0.5);
+    overlay.setDepth(1000);
+    
+    // Game Over title
+    const title = this.add.text(width / 2, height / 3 - 50, 'GAME OVER', {
+      fontSize: '64px',
+      color: '#e94560',
+      fontStyle: 'bold'
     });
+    title.setOrigin(0.5);
+    title.setDepth(1001);
+    
+    // Check if new high score
+    const isNewHighScore = this.score === highScore && this.score > 0;
+    
+    if (isNewHighScore) {
+      const newRecordText = this.add.text(width / 2, height / 3 + 20, '🎉 NEW RECORD! 🎉', {
+        fontSize: '32px',
+        color: '#ffd93d',
+        fontStyle: 'bold'
+      });
+      newRecordText.setOrigin(0.5);
+      newRecordText.setDepth(1001);
+      
+      // Pulse animation
+      this.tweens.add({
+        targets: newRecordText,
+        scale: 1.1,
+        duration: 500,
+        yoyo: true,
+        repeat: -1
+      });
+    }
+    
+    // Final score
+    const scoreText = this.add.text(width / 2, height / 2 - 20, `Final Score: ${this.score}`, {
+      fontSize: '36px',
+      color: '#ffffff'
+    });
+    scoreText.setOrigin(0.5);
+    scoreText.setDepth(1001);
+    
+    // High score
+    const highScoreText = this.add.text(width / 2, height / 2 + 30, `High Score: ${highScore}`, {
+      fontSize: '24px',
+      color: '#f4a261'
+    });
+    highScoreText.setOrigin(0.5);
+    highScoreText.setDepth(1001);
+    
+    // Play Again button
+    const playAgainButton = this.add.text(width / 2, height / 2 + 100, 'PLAY AGAIN', {
+      fontSize: '36px',
+      color: '#ffffff',
+      backgroundColor: '#e94560',
+      padding: { x: 30, y: 12 }
+    });
+    playAgainButton.setOrigin(0.5);
+    playAgainButton.setInteractive({ useHandCursor: true });
+    playAgainButton.setDepth(1001);
+    
+    playAgainButton.on('pointerover', () => {
+      playAgainButton.setScale(1.1);
+    });
+    
+    playAgainButton.on('pointerout', () => {
+      playAgainButton.setScale(1);
+    });
+    
+    playAgainButton.on('pointerdown', () => {
+      this.scene.restart();
+    });
+    
+    // Main Menu button
+    const menuButton = this.add.text(width / 2, height / 2 + 160, 'MAIN MENU', {
+      fontSize: '24px',
+      color: '#ffffff',
+      backgroundColor: '#555555',
+      padding: { x: 20, y: 8 }
+    });
+    menuButton.setOrigin(0.5);
+    menuButton.setInteractive({ useHandCursor: true });
+    menuButton.setDepth(1001);
+    
+    menuButton.on('pointerover', () => {
+      menuButton.setScale(1.1);
+    });
+    
+    menuButton.on('pointerout', () => {
+      menuButton.setScale(1);
+    });
+    
+    menuButton.on('pointerdown', () => {
+      this.scene.start(SCENES.MENU);
+    });
+    
+    // Keyboard controls (Enter to play again, Esc for menu)
+    const enterKey = this.input.keyboard?.addKey(Phaser.Input.Keyboard.KeyCodes.ENTER);
+    const escKey = this.input.keyboard?.addKey(Phaser.Input.Keyboard.KeyCodes.ESC);
+    
+    enterKey?.on('down', () => {
+      this.scene.restart();
+    });
+    
+    escKey?.on('down', () => {
+      this.scene.start(SCENES.MENU);
+    });
+    
+    // Hint text
+    const hintText = this.add.text(width / 2, height - 40, 'Press ENTER to play again or ESC for menu', {
+      fontSize: '16px',
+      color: '#888888'
+    });
+    hintText.setOrigin(0.5);
+    hintText.setDepth(1001);
   }
 }
