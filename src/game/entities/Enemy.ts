@@ -111,8 +111,10 @@ export default class Enemy extends Phaser.Physics.Arcade.Sprite {
   }
 
   destroy(fromScene?: boolean) {
-    // Clean up event listeners
-    this.scene.events.off('freezeEnemies', this.freeze, this);
+    // Clean up event listeners only if scene is still active
+    if (this.scene && this.scene.events) {
+      this.scene.events.off('freezeEnemies', this.freeze, this);
+    }
     super.destroy(fromScene);
   }
 }

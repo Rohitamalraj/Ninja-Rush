@@ -14,6 +14,7 @@ export default class GameScene extends Phaser.Scene {
   private score: number = 0;
   private lives: number = GAME_CONFIG.PLAYER_LIVES;
   private timeLeft: number = GAME_CONFIG.ROUND_DURATION;
+  private isGameOver: boolean = false;
   
   private scoreText!: Phaser.GameObjects.Text;
   private timerText!: Phaser.GameObjects.Text;
@@ -37,6 +38,7 @@ export default class GameScene extends Phaser.Scene {
     this.score = 0;
     this.lives = GAME_CONFIG.PLAYER_LIVES;
     this.timeLeft = GAME_CONFIG.ROUND_DURATION;
+    this.isGameOver = false;
     this.comboKills = [];
     this.currentDifficultyPhase = 0;
     this.frenzyMode = false;
@@ -69,6 +71,9 @@ export default class GameScene extends Phaser.Scene {
   }
 
   update(time: number, delta: number) {
+    // Don't update if game is over
+    if (this.isGameOver) return;
+    
     // Update timer
     this.timeLeft -= delta / 1000;
     this.timerText.setText(`Time: ${Math.ceil(this.timeLeft)}s`);
@@ -507,6 +512,21 @@ export default class GameScene extends Phaser.Scene {
   }
 
   private gameOver() {
+    // Prevent multiple calls
+    if (this.isGameOver) return;
+    this.isGameOver = true;
+    
+    // Stop physics and disable inputs
+    this.physics.pause();
+    
+    // Clean up groups properly before scene transition
+    if (this.enemies) {
+      this.enemies.clear(true, true);
+    }
+    if (this.powerUps) {
+      this.powerUps.clear(true, true);
+    }
+    
     // Save high score
     const highScore = parseInt(localStorage.getItem('ninjaRush_highScore') || '0');
     if (this.score > highScore) {
@@ -517,7 +537,10 @@ export default class GameScene extends Phaser.Scene {
     const totalGames = parseInt(localStorage.getItem('ninjaRush_totalGames') || '0');
     localStorage.setItem('ninjaRush_totalGames', (totalGames + 1).toString());
     
-    // Pass score to game over scene
-    this.scene.start(SCENES.GAMEOVER, { score: this.score, highScore: Math.max(this.score, highScore) });
+    // Use a small delay to ensure cleanup is complete
+    this.time.delayedCall(100, () => {
+      // Pass score to game over scene
+      this.scene.start(SCENES.GAMEOVER, { score: this.score, highScore: Math.max(this.score, highScore) });
+    });
   }
 }

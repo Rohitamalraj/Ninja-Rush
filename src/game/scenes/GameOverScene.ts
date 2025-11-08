@@ -103,5 +103,21 @@ export default class GameOverScene extends Phaser.Scene {
     menuButton.on('pointerdown', () => {
       this.scene.start(SCENES.MENU);
     });
+    
+    // Keyboard controls
+    this.input.keyboard?.on('keydown-SPACE', () => {
+      this.scene.start(SCENES.GAME);
+    });
+    
+    this.input.keyboard?.on('keydown-ESC', () => {
+      this.scene.start(SCENES.MENU);
+    });
+    
+    // Hint text
+    const hintText = this.add.text(width / 2, height - 40, 'Press SPACE to play again or ESC for menu', {
+      fontSize: '16px',
+      color: '#888888'
+    });
+    hintText.setOrigin(0.5);
   }
 }
