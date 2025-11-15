@@ -1,5 +1,8 @@
 import { useEffect } from 'react';
 import GameCanvas from './components/GameCanvas';
+import { WalletButton } from './components/WalletButton';
+import { MilestoneProgress } from './components/MilestoneProgress';
+import { WalletProvider } from './contexts/WalletContext';
 import { useGameStore } from './store/gameStore';
 
 function App() {
@@ -11,9 +14,13 @@ function App() {
   }, [loadHighScore]);
 
   return (
-    <div className="w-screen h-screen overflow-hidden bg-ninja-dark">
-      <GameCanvas />
-    </div>
+    <WalletProvider>
+      <div className="w-screen h-screen overflow-hidden bg-ninja-dark">
+        <WalletButton />
+        <GameCanvas />
+        <MilestoneProgress />
+      </div>
+    </WalletProvider>
   );
 }
 
