@@ -85,6 +85,9 @@ export const WalletProvider: React.FC<WalletProviderProps> = ({ children }) => {
     try {
       const tx = new Transaction();
 
+      // Set gas budget explicitly
+      tx.setGasBudget(10000000); // 0.01 OCT
+
       // Call award_tokens function
       tx.moveCall({
         target: `${CONTRACT_CONFIG.packageId}::ninja_token::award_tokens`,
@@ -137,6 +140,9 @@ export const WalletProvider: React.FC<WalletProviderProps> = ({ children }) => {
 
       const tx = new Transaction();
 
+      // Set gas budget
+      tx.setGasBudget(10000000); // 0.01 OCT
+
       // Merge all NINJA coins if multiple
       const ninjaCoin = tx.object(ninjaCoins[0].coinObjectId);
       if (ninjaCoins.length > 1) {
@@ -187,6 +193,9 @@ export const WalletProvider: React.FC<WalletProviderProps> = ({ children }) => {
 
     try {
       const tx = new Transaction();
+
+      // Set gas budget
+      tx.setGasBudget(10000000); // 0.01 OCT
 
       // Call submit_score function
       tx.moveCall({

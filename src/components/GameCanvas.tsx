@@ -3,12 +3,13 @@ import Phaser from 'phaser';
 import { gameConfig, SCENES } from '../game/config';
 import { GameOverModal } from './GameOverModal';
 import { MainMenu } from './MainMenu';
+import { useUIStore } from '../store/uiStore';
 
 export default function GameCanvas() {
   const gameRef = useRef<Phaser.Game | null>(null);
   const parentRef = useRef<HTMLDivElement>(null);
   const [showModal, setShowModal] = useState(false);
-  const [showMainMenu, setShowMainMenu] = useState(true);
+  const { showMainMenu, setShowMainMenu } = useUIStore();
   const [highScore, setHighScore] = useState(0);
   const [gameStats, setGameStats] = useState({
     score: 0,
@@ -31,13 +32,8 @@ export default function GameCanvas() {
 
     gameRef.current = new Phaser.Game(config);
 
-    // Start at menu scene
-    if (gameRef.current) {
-      const bootScene = gameRef.current.scene.getScene(SCENES.BOOT);
-      if (bootScene) {
-        bootScene.scene.start(SCENES.MENU);
-      }
-    }
+    // Don't start any Phaser scenes yet - React MainMenu will handle it
+    // Just let Phaser initialize
 
     // Poll for game over state
     const checkGameOver = setInterval(() => {
@@ -65,9 +61,16 @@ export default function GameCanvas() {
   const handleStartGame = () => {
     setShowMainMenu(false);
     if (gameRef.current) {
-      const menuScene = gameRef.current.scene.getScene(SCENES.MENU);
-      if (menuScene) {
-        menuScene.scene.start(SCENES.GAME);
+      // Start the game directly, skipping Phaser's menu
+      const gameScene = gameRef.current.scene.getScene(SCENES.GAME);
+      if (gameScene) {
+        gameScene.scene.start(SCENES.GAME);
+      } else {
+        // If game scene not ready, start from boot
+        const bootScene = gameRef.current.scene.getScene(SCENES.BOOT);
+        if (bootScene) {
+          bootScene.scene.start(SCENES.GAME);
+        }
       }
     }
   };
@@ -95,7 +98,13 @@ export default function GameCanvas() {
 
   return (
     <div className="flex items-center justify-center w-full h-full bg-gradient-to-br from-gray-900 via-purple-900 to-gray-900">
-      <div ref={parentRef} id="game-container" className="rounded-lg shadow-2xl" />
+      {/* Phaser game container - hidden when menu is shown */}
+      <div 
+        ref={parentRef} 
+        id="game-container" 
+        className="rounded-lg shadow-2xl"
+        style={{ display: showMainMenu ? 'none' : 'block' }}
+      />
       
       {showMainMenu && (
         <MainMenu onStartGame={handleStartGame} highScore={highScore} />

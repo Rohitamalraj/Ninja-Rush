@@ -1,5 +1,6 @@
 import React, { useMemo, useState } from 'react';
 import { useWallet } from '../contexts/WalletContext';
+import { useUIStore } from '../store/uiStore';
 
 interface Milestone {
   ninjaRequired: number;
@@ -15,6 +16,7 @@ const MILESTONES: Milestone[] = [
 
 export const MilestoneProgress: React.FC = () => {
   const { balance, connected, exchangeForOCT } = useWallet();
+  const { showMainMenu } = useUIStore();
   const [claiming, setClaiming] = useState(false);
 
   const { currentMilestone, progress, nextReward, remaining, milestoneIndex } = useMemo(() => {
@@ -70,7 +72,8 @@ export const MilestoneProgress: React.FC = () => {
     }
   };
 
-  if (!connected) {
+  // Hide on main menu or if not connected
+  if (showMainMenu || !connected) {
     return null;
   }
 

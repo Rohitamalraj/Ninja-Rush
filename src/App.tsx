@@ -16,10 +16,11 @@ function App() {
 
   return (
     <WalletProvider>
-      <div className="w-screen h-screen overflow-hidden bg-ninja-dark">
+      <div className="w-screen h-screen overflow-hidden bg-ninja-dark relative">
         <WalletButton />
-        <GameInfo />
         <GameCanvas />
+        {/* Only show game UI elements when not on main menu */}
+        <GameInfo />
         <MilestoneProgress />
       </div>
     </WalletProvider>

@@ -16,6 +16,10 @@ export default class GameScene extends Phaser.Scene {
   private timeLeft: number = GAME_CONFIG.ROUND_DURATION;
   private isGameOver: boolean = false;
   
+  // Game stats tracking
+  private enemiesKilled: number = 0;
+  private powerUpsCollected: number = 0;
+  
   private scoreText!: Phaser.GameObjects.Text;
   private timerText!: Phaser.GameObjects.Text;
   private livesText!: Phaser.GameObjects.Text;
@@ -39,6 +43,8 @@ export default class GameScene extends Phaser.Scene {
     this.lives = GAME_CONFIG.PLAYER_LIVES;
     this.timeLeft = GAME_CONFIG.ROUND_DURATION;
     this.isGameOver = false;
+    this.enemiesKilled = 0;
+    this.powerUpsCollected = 0;
     this.comboKills = [];
     this.currentDifficultyPhase = 0;
     this.frenzyMode = false;
@@ -225,6 +231,9 @@ export default class GameScene extends Phaser.Scene {
       const points = enemyObj.getPoints();
       this.addScore(points);
       
+      // Track kill
+      this.enemiesKilled++;
+      
       // Register kill for combo
       this.registerKill();
       
@@ -265,6 +274,9 @@ export default class GameScene extends Phaser.Scene {
     const type = powerUpObj.getType();
     
     this.addScore(POWERUP_CONFIG[type].points);
+    
+    // Track collection
+    this.powerUpsCollected++;
     
     // Play power-up sound
     soundGenerator.playPowerUp();
@@ -456,16 +468,18 @@ export default class GameScene extends Phaser.Scene {
     const totalGames = parseInt(localStorage.getItem('ninjaRush_totalGames') || '0');
     localStorage.setItem('ninjaRush_totalGames', (totalGames + 1).toString());
     
-    // Claim NINJA tokens from blockchain if wallet is connected
-    const claimNinjaTokens = this.registry.get('claimNinjaTokens');
-    if (claimNinjaTokens && this.score > 0) {
-      claimNinjaTokens(this.score).catch((error: Error) => {
-        console.error('Failed to claim NINJA tokens:', error);
-      });
-    }
+    // Store game stats in registry for React modal to access
+    this.registry.set('gameOverStats', {
+      score: this.score,
+      highScore: finalHighScore,
+      enemiesKilled: this.enemiesKilled,
+      powerUpsCollected: this.powerUpsCollected,
+    });
     
-    // Show game over overlay on the same scene
-    this.showGameOverOverlay(finalHighScore);
+    // Emit event for React to show modal
+    this.registry.set('showGameOverModal', true);
+    
+    // Don't show Phaser overlay - React modal handles everything
   }
 
   private showGameOverOverlay(highScore: number) {

@@ -63,21 +63,14 @@ export const MainMenu: React.FC<MainMenuProps> = ({ onStartGame, highScore }) =>
           </div>
         </button>
 
-        {/* Secondary Buttons */}
-        <div className="flex justify-center gap-4 mb-8">
+        {/* Secondary Button - How to Play */}
+        <div className="flex justify-center mb-6">
           <button
             onClick={() => setShowInstructions(!showInstructions)}
-            className="bg-blue-600 hover:bg-blue-500 text-white font-bold text-xl py-4 px-8 rounded-xl
+            className="bg-blue-600 hover:bg-blue-500 text-white font-bold text-lg py-3 px-6 rounded-xl
                      border-2 border-blue-400 shadow-lg transform hover:scale-105 transition-all"
           >
-            📖 How to Play
-          </button>
-          
-          <button
-            className="bg-purple-600 hover:bg-purple-500 text-white font-bold text-xl py-4 px-8 rounded-xl
-                     border-2 border-purple-400 shadow-lg transform hover:scale-105 transition-all"
-          >
-            🏆 Leaderboard
+            {showInstructions ? '❌ Close' : '📖 How to Play'}
           </button>
         </div>
 

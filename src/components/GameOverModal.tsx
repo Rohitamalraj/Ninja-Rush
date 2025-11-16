@@ -42,14 +42,16 @@ export const GameOverModal: React.FC<GameOverModalProps> = ({
     setError(null);
     
     try {
+      console.log('Claiming NINJA tokens for score:', score);
       await claimNinjaTokens(score);
       setClaimed(true);
+      console.log('Successfully claimed NINJA tokens');
       // Refresh balance after claiming
       setTimeout(() => refreshBalance(), 2000);
     } catch (err: unknown) {
       const errorMessage = err instanceof Error ? err.message : 'Failed to claim tokens';
       console.error('Failed to claim NINJA tokens:', err);
-      setError(errorMessage);
+      setError(`Transaction failed: ${errorMessage}. Please try again.`);
       setClaimed(false);
     } finally {
       setClaiming(false);

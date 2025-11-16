@@ -1,9 +1,14 @@
 import React, { useState } from 'react';
 import { useWallet } from '../contexts/WalletContext';
+import { useUIStore } from '../store/uiStore';
 
 export const GameInfo: React.FC = () => {
   const { connected } = useWallet();
+  const { showMainMenu } = useUIStore();
   const [isExpanded, setIsExpanded] = useState(false);
+
+  // Hide on main menu
+  if (showMainMenu) return null;
 
   return (
     <div className="fixed top-24 left-6 z-40 max-w-sm">
