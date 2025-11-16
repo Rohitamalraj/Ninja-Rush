@@ -1,139 +1,116 @@
 module ninja_rush::ninja_token {
-    use std::signer;
-    use aptos_framework::coin::{Self, Coin, BurnCapability, FreezeCapability, MintCapability};
-    use aptos_framework::account;
-    use std::string;
+    use one::coin::{Self, Coin, TreasuryCap};
+    use one::object::{Self, UID};
+    use one::tx_context::{Self, TxContext};
+    use one::transfer;
+    use one::table::{Self, Table};
+    use std::option;
 
     /// Error codes
-    const E_NOT_AUTHORIZED: u64 = 1;
-    const E_ALREADY_INITIALIZED: u64 = 2;
-    const E_NOT_INITIALIZED: u64 = 3;
+    const E_NOT_ADMIN: u64 = 1;
+    const E_INVALID_SCORE: u64 = 2;
+    const E_INSUFFICIENT_BALANCE: u64 = 3;
 
-    /// NINJA token coin type
-    struct NinjaCoin has key {}
+    /// NINJA token witness (one-time witness pattern)
+    public struct NINJA_TOKEN has drop {}
 
-    /// Capabilities holder for admin
-    struct Capabilities has key {
-        mint_cap: MintCapability<NinjaCoin>,
-        burn_cap: BurnCapability<NinjaCoin>,
-        freeze_cap: FreezeCapability<NinjaCoin>,
+    /// Global state for NINJA token system
+    public struct NinjaTokenState has key {
+        id: UID,
+        treasury_cap: TreasuryCap<NINJA_TOKEN>,
+        player_stats: Table<address, PlayerStats>,
+        admin: address,
     }
 
-    /// Player's NINJA token balance and stats
-    struct PlayerStats has key {
+    /// Player statistics
+    public struct PlayerStats has store {
         total_earned: u64,
-        total_exchanged: u64,
         games_played: u64,
+        last_claim: u64,
     }
 
-    /// Initialize the NINJA token
-    /// Can only be called once by the module deployer
-    public entry fun initialize(admin: &signer) {
-        assert!(!exists<Capabilities>(signer::address_of(admin)), E_ALREADY_INITIALIZED);
-
-        let (burn_cap, freeze_cap, mint_cap) = coin::initialize<NinjaCoin>(
-            admin,
-            string::utf8(b"Ninja Token"),
-            string::utf8(b"NINJA"),
+    /// Initialize the NINJA token (called once at deployment)
+    fun init(witness: NINJA_TOKEN, ctx: &mut TxContext) {
+        // Create the NINJA coin
+        let (treasury_cap, metadata) = coin::create_currency(
+            witness,
             6, // decimals
-            true, // monitor supply
+            b"NINJA",
+            b"Ninja Rush Token",
+            b"Token earned by playing Ninja Rush game",
+            option::none(),
+            ctx
         );
 
-        move_to(admin, Capabilities {
-            mint_cap,
-            burn_cap,
-            freeze_cap,
-        });
+        // Freeze metadata so it can't be changed
+        transfer::public_freeze_object(metadata);
 
-        // Register the admin account to receive NINJA tokens
-        coin::register<NinjaCoin>(admin);
+        // Create global state
+        let state = NinjaTokenState {
+            id: object::new(ctx),
+            treasury_cap,
+            player_stats: table::new(ctx),
+            admin: tx_context::sender(ctx),
+        };
+
+        // Share the state object
+        transfer::share_object(state);
     }
 
-    /// Award NINJA tokens to player after game
-    /// Called by backend/oracle after score verification
+    /// Award NINJA tokens based on game score (1 score = 1 NINJA)
     public entry fun award_tokens(
-        admin: &signer,
-        player_addr: address,
-        amount: u64
-    ) acquires Capabilities, PlayerStats {
-        let admin_addr = signer::address_of(admin);
-        assert!(exists<Capabilities>(admin_addr), E_NOT_INITIALIZED);
+        state: &mut NinjaTokenState,
+        player: address,
+        score: u64,
+        ctx: &mut TxContext
+    ) {
+        assert!(score > 0, E_INVALID_SCORE);
 
-        // Mint tokens
-        let caps = borrow_global<Capabilities>(admin_addr);
-        let coins = coin::mint(amount, &caps.mint_cap);
-
-        // Register player if not already registered
-        if (!coin::is_account_registered<NinjaCoin>(player_addr)) {
-            // Note: In production, player should register themselves
-            // This is simplified for hackathon demo
-            coin::register<NinjaCoin>(admin);
-        };
-
-        // Deposit to player
-        coin::deposit(player_addr, coins);
-
-        // Update player stats
-        if (!exists<PlayerStats>(player_addr)) {
-            move_to(admin, PlayerStats {
-                total_earned: amount,
-                total_exchanged: 0,
-                games_played: 1,
-            });
-        } else {
-            let stats = borrow_global_mut<PlayerStats>(player_addr);
-            stats.total_earned = stats.total_earned + amount;
-            stats.games_played = stats.games_played + 1;
-        };
-    }
-
-    /// Register player to receive NINJA tokens
-    public entry fun register_player(player: &signer) {
-        coin::register<NinjaCoin>(player);
+        // Mint tokens (score * 10^6 to account for 6 decimals)
+        let amount = score * 1000000;
+        let coins = coin::mint(&mut state.treasury_cap, amount, ctx);
         
-        let player_addr = signer::address_of(player);
-        if (!exists<PlayerStats>(player_addr)) {
-            move_to(player, PlayerStats {
-                total_earned: 0,
-                total_exchanged: 0,
-                games_played: 0,
+        // Transfer to player
+        transfer::public_transfer(coins, player);
+
+        // Update or create player stats
+        let sender = tx_context::sender(ctx);
+        if (table::contains(&state.player_stats, sender)) {
+            let stats = table::borrow_mut(&mut state.player_stats, sender);
+            stats.total_earned = stats.total_earned + score;
+            stats.games_played = stats.games_played + 1;
+            stats.last_claim = tx_context::epoch(ctx);
+        } else {
+            table::add(&mut state.player_stats, sender, PlayerStats {
+                total_earned: score,
+                games_played: 1,
+                last_claim: tx_context::epoch(ctx),
             });
         };
     }
 
-    /// Burn NINJA tokens (used during exchange to OCT)
-    /// Called by exchange module
-    public fun burn_tokens(admin: &signer, coins: Coin<NinjaCoin>) acquires Capabilities {
-        let admin_addr = signer::address_of(admin);
-        assert!(exists<Capabilities>(admin_addr), E_NOT_AUTHORIZED);
-
-        let caps = borrow_global<Capabilities>(admin_addr);
-        coin::burn(coins, &caps.burn_cap);
-    }
-
-    /// Get player's NINJA token balance
-    #[view]
-    public fun get_balance(player_addr: address): u64 {
-        if (coin::is_account_registered<NinjaCoin>(player_addr)) {
-            coin::balance<NinjaCoin>(player_addr)
-        } else {
-            0
-        }
-    }
-
-    /// Get player stats
-    #[view]
-    public fun get_player_stats(player_addr: address): (u64, u64, u64) acquires PlayerStats {
-        if (exists<PlayerStats>(player_addr)) {
-            let stats = borrow_global<PlayerStats>(player_addr);
-            (stats.total_earned, stats.total_exchanged, stats.games_played)
+    /// Get player statistics
+    public fun get_player_stats(state: &NinjaTokenState, player: address): (u64, u64, u64) {
+        if (table::contains(&state.player_stats, player)) {
+            let stats = table::borrow(&state.player_stats, player);
+            (stats.total_earned, stats.games_played, stats.last_claim)
         } else {
             (0, 0, 0)
         }
     }
 
+    /// Burn tokens (used by exchange contract)
+    public fun burn_tokens(
+        state: &mut NinjaTokenState,
+        coins: Coin<NINJA_TOKEN>,
+    ): u64 {
+        let amount = coin::value(&coins);
+        coin::burn(&mut state.treasury_cap, coins);
+        amount
+    }
+
     #[test_only]
-    public fun initialize_for_test(admin: &signer) {
-        initialize(admin);
+    public fun init_for_testing(ctx: &mut TxContext) {
+        init(NINJA_TOKEN {}, ctx);
     }
 }

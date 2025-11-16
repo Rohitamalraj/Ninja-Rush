@@ -1,250 +1,200 @@
 module ninja_rush::leaderboard {
-    use std::signer;
+    use one::object::{Self, UID};
+    use one::tx_context::{Self, TxContext};
+    use one::transfer;
+    use one::table::{Self, Table};
     use std::vector;
-    use aptos_framework::timestamp;
-    use std::string::{Self, String};
 
     /// Error codes
-    const E_NOT_INITIALIZED: u64 = 1;
+    const E_NOT_ADMIN: u64 = 1;
     const E_INVALID_SCORE: u64 = 2;
-    const E_NAME_TOO_LONG: u64 = 3;
-    const E_NOT_AUTHORIZED: u64 = 4;
+    const E_LEADERBOARD_FULL: u64 = 3;
 
-    /// Maximum name length
-    const MAX_NAME_LENGTH: u64 = 20;
+    /// Maximum entries in leaderboards
+    const MAX_GLOBAL_ENTRIES: u64 = 100;
+    const MAX_DAILY_ENTRIES: u64 = 50;
 
     /// Leaderboard entry
-    struct LeaderboardEntry has store, drop, copy {
+    public struct ScoreEntry has store, copy, drop {
         player: address,
-        player_name: String,
         score: u64,
-        timestamp: u64,
         enemies_killed: u64,
         power_ups_collected: u64,
+        timestamp: u64,
     }
 
-    /// Global leaderboard (top 100)
-    struct GlobalLeaderboard has key {
-        entries: vector<LeaderboardEntry>,
-        total_submissions: u64,
+    /// Global leaderboard state
+    public struct GlobalLeaderboard has key {
+        id: UID,
+        top_scores: vector<ScoreEntry>,
+        daily_scores: vector<ScoreEntry>,
+        daily_reset_epoch: u64,
+        player_best: Table<address, PlayerBest>,
         admin: address,
     }
 
-    /// Player's personal best scores
-    struct PersonalBest has key {
+    /// Player's personal best and stats
+    public struct PlayerBest has store {
         best_score: u64,
         total_games: u64,
-        total_enemies_killed: u64,
-        total_power_ups: u64,
-        first_played: u64,
-        last_played: u64,
+        total_kills: u64,
+        total_powerups: u64,
     }
 
-    /// Daily leaderboard (resets every 24 hours)
-    struct DailyLeaderboard has key {
-        entries: vector<LeaderboardEntry>,
-        day_start: u64,
-        admin: address,
+    /// Initialize the leaderboard
+    fun init(ctx: &mut TxContext) {
+        let leaderboard = GlobalLeaderboard {
+            id: object::new(ctx),
+            top_scores: vector::empty(),
+            daily_scores: vector::empty(),
+            daily_reset_epoch: tx_context::epoch(ctx),
+            player_best: table::new(ctx),
+            admin: tx_context::sender(ctx),
+        };
+
+        transfer::share_object(leaderboard);
     }
 
-    /// Initialize leaderboard system
-    public entry fun initialize(admin: &signer) {
-        let admin_addr = signer::address_of(admin);
-        assert!(!exists<GlobalLeaderboard>(admin_addr), E_NOT_INITIALIZED);
-
-        move_to(admin, GlobalLeaderboard {
-            entries: vector::empty<LeaderboardEntry>(),
-            total_submissions: 0,
-            admin: admin_addr,
-        });
-
-        let current_time = timestamp::now_seconds();
-        move_to(admin, DailyLeaderboard {
-            entries: vector::empty<LeaderboardEntry>(),
-            day_start: current_time,
-            admin: admin_addr,
-        });
-    }
-
-    /// Submit score to leaderboard
+    /// Submit a game score
     public entry fun submit_score(
-        player: &signer,
-        leaderboard_addr: address,
-        player_name: String,
+        leaderboard: &mut GlobalLeaderboard,
         score: u64,
         enemies_killed: u64,
         power_ups_collected: u64,
-    ) acquires GlobalLeaderboard, PersonalBest, DailyLeaderboard {
-        let player_addr = signer::address_of(player);
-        
-        // Validate input
+        ctx: &mut TxContext
+    ) {
         assert!(score > 0, E_INVALID_SCORE);
-        assert!(string::length(&player_name) <= MAX_NAME_LENGTH, E_NAME_TOO_LONG);
 
-        let current_time = timestamp::now_seconds();
+        let player = tx_context::sender(ctx);
+        let timestamp = tx_context::epoch(ctx);
 
-        // Create entry
-        let entry = LeaderboardEntry {
-            player: player_addr,
-            player_name,
+        // Reset daily leaderboard if needed (every 1 epoch ~24 hours)
+        if (timestamp > leaderboard.daily_reset_epoch) {
+            leaderboard.daily_scores = vector::empty();
+            leaderboard.daily_reset_epoch = timestamp;
+        };
+
+        let entry = ScoreEntry {
+            player,
             score,
-            timestamp: current_time,
             enemies_killed,
             power_ups_collected,
+            timestamp,
         };
 
         // Update global leaderboard
-        let global = borrow_global_mut<GlobalLeaderboard>(leaderboard_addr);
-        insert_entry(&mut global.entries, entry, 100); // Keep top 100
-        global.total_submissions = global.total_submissions + 1;
+        insert_score(&mut leaderboard.top_scores, entry, MAX_GLOBAL_ENTRIES);
 
         // Update daily leaderboard
-        let daily = borrow_global_mut<DailyLeaderboard>(leaderboard_addr);
-        let one_day = 86400; // 24 hours in seconds
-        if (current_time - daily.day_start >= one_day) {
-            // Reset daily leaderboard
-            daily.entries = vector::empty<LeaderboardEntry>();
-            daily.day_start = current_time;
-        };
-        insert_entry(&mut daily.entries, entry, 50); // Keep top 50 daily
+        insert_score(&mut leaderboard.daily_scores, entry, MAX_DAILY_ENTRIES);
 
-        // Update personal best
-        if (!exists<PersonalBest>(player_addr)) {
-            move_to(player, PersonalBest {
+        // Update player's personal best
+        if (!table::contains(&leaderboard.player_best, player)) {
+            table::add(&mut leaderboard.player_best, player, PlayerBest {
                 best_score: score,
                 total_games: 1,
-                total_enemies_killed: enemies_killed,
-                total_power_ups: power_ups_collected,
-                first_played: current_time,
-                last_played: current_time,
+                total_kills: enemies_killed,
+                total_powerups: power_ups_collected,
             });
         } else {
-            let personal = borrow_global_mut<PersonalBest>(player_addr);
-            if (score > personal.best_score) {
-                personal.best_score = score;
+            let best = table::borrow_mut(&mut leaderboard.player_best, player);
+            if (score > best.best_score) {
+                best.best_score = score;
             };
-            personal.total_games = personal.total_games + 1;
-            personal.total_enemies_killed = personal.total_enemies_killed + enemies_killed;
-            personal.total_power_ups = personal.total_power_ups + power_ups_collected;
-            personal.last_played = current_time;
+            best.total_games = best.total_games + 1;
+            best.total_kills = best.total_kills + enemies_killed;
+            best.total_powerups = best.total_powerups + power_ups_collected;
         };
     }
 
-    /// Insert entry into sorted leaderboard (descending by score)
-    fun insert_entry(entries: &mut vector<LeaderboardEntry>, new_entry: LeaderboardEntry, max_size: u64) {
-        let len = vector::length(entries);
-        let insert_pos = len;
-
+    /// Insert score into leaderboard (sorted by score descending)
+    fun insert_score(scores: &mut vector<ScoreEntry>, entry: ScoreEntry, max_size: u64) {
+        let len = vector::length(scores);
+        
         // Find insertion position
-        let i = 0;
+        let mut i = 0;
+        let mut insert_pos = len;
+        
         while (i < len) {
-            let entry = vector::borrow(entries, i);
-            if (new_entry.score > entry.score) {
+            let existing = vector::borrow(scores, i);
+            if (entry.score > existing.score) {
                 insert_pos = i;
                 break
             };
             i = i + 1;
         };
 
-        // Insert entry
+        // Insert at position
         if (insert_pos < max_size) {
-            if (insert_pos == len) {
-                vector::push_back(entries, new_entry);
-            } else {
-                vector::insert(entries, insert_pos, new_entry);
-            };
-
-            // Trim to max size
-            while (vector::length(entries) > max_size) {
-                vector::pop_back(entries);
+            vector::insert(scores, entry, insert_pos);
+            
+            // Remove last if exceeded max size
+            if (vector::length(scores) > max_size) {
+                vector::pop_back(scores);
             };
         };
     }
 
-    /// Get top N entries from global leaderboard
-    #[view]
-    public fun get_top_scores(leaderboard_addr: address, count: u64): vector<LeaderboardEntry> acquires GlobalLeaderboard {
-        if (!exists<GlobalLeaderboard>(leaderboard_addr)) {
-            return vector::empty<LeaderboardEntry>()
-        };
-
-        let global = borrow_global<GlobalLeaderboard>(leaderboard_addr);
-        let len = vector::length(&global.entries);
-        let max_count = if (count > len) { len } else { count };
-
-        let result = vector::empty<LeaderboardEntry>();
-        let i = 0;
-        while (i < max_count) {
-            let entry = *vector::borrow(&global.entries, i);
-            vector::push_back(&mut result, entry);
+    /// Get top N scores from global leaderboard
+    public fun get_top_scores(leaderboard: &GlobalLeaderboard, limit: u64): vector<ScoreEntry> {
+        let len = vector::length(&leaderboard.top_scores);
+        let mut result = vector::empty<ScoreEntry>();
+        
+        let count = if (limit < len) { limit } else { len };
+        let mut i = 0;
+        
+        while (i < count) {
+            vector::push_back(&mut result, *vector::borrow(&leaderboard.top_scores, i));
             i = i + 1;
         };
-
+        
         result
     }
 
-    /// Get daily leaderboard
-    #[view]
-    public fun get_daily_leaderboard(leaderboard_addr: address): vector<LeaderboardEntry> acquires DailyLeaderboard {
-        if (!exists<DailyLeaderboard>(leaderboard_addr)) {
-            return vector::empty<LeaderboardEntry>()
+    /// Get top N scores from daily leaderboard
+    public fun get_daily_scores(leaderboard: &GlobalLeaderboard, limit: u64): vector<ScoreEntry> {
+        let len = vector::length(&leaderboard.daily_scores);
+        let mut result = vector::empty<ScoreEntry>();
+        
+        let count = if (limit < len) { limit } else { len };
+        let mut i = 0;
+        
+        while (i < count) {
+            vector::push_back(&mut result, *vector::borrow(&leaderboard.daily_scores, i));
+            i = i + 1;
         };
-
-        let daily = borrow_global<DailyLeaderboard>(leaderboard_addr);
-        daily.entries
+        
+        result
     }
 
-    /// Get player's rank in global leaderboard
-    #[view]
-    public fun get_player_rank(leaderboard_addr: address, player_addr: address): u64 acquires GlobalLeaderboard {
-        if (!exists<GlobalLeaderboard>(leaderboard_addr)) {
-            return 0
-        };
-
-        let global = borrow_global<GlobalLeaderboard>(leaderboard_addr);
-        let len = vector::length(&global.entries);
+    /// Get player's rank in global leaderboard (1-indexed, 0 if not ranked)
+    public fun get_player_rank(leaderboard: &GlobalLeaderboard, player: address): u64 {
+        let len = vector::length(&leaderboard.top_scores);
+        let mut i = 0;
         
-        let i = 0;
         while (i < len) {
-            let entry = vector::borrow(&global.entries, i);
-            if (entry.player == player_addr) {
-                return i + 1 // Rank is 1-indexed
+            let entry = vector::borrow(&leaderboard.top_scores, i);
+            if (entry.player == player) {
+                return i + 1
             };
             i = i + 1;
         };
-
-        0 // Not in top 100
+        
+        0 // Not ranked
     }
 
     /// Get player's personal best
-    #[view]
-    public fun get_personal_best(player_addr: address): (u64, u64, u64, u64) acquires PersonalBest {
-        if (exists<PersonalBest>(player_addr)) {
-            let personal = borrow_global<PersonalBest>(player_addr);
-            (
-                personal.best_score,
-                personal.total_games,
-                personal.total_enemies_killed,
-                personal.total_power_ups
-            )
+    public fun get_player_best(leaderboard: &GlobalLeaderboard, player: address): (u64, u64, u64, u64) {
+        if (table::contains(&leaderboard.player_best, player)) {
+            let best = table::borrow(&leaderboard.player_best, player);
+            (best.best_score, best.total_games, best.total_kills, best.total_powerups)
         } else {
             (0, 0, 0, 0)
         }
     }
 
-    /// Get total submissions count
-    #[view]
-    public fun get_total_submissions(leaderboard_addr: address): u64 acquires GlobalLeaderboard {
-        if (exists<GlobalLeaderboard>(leaderboard_addr)) {
-            let global = borrow_global<GlobalLeaderboard>(leaderboard_addr);
-            global.total_submissions
-        } else {
-            0
-        }
-    }
-
     #[test_only]
-    public fun initialize_for_test(admin: &signer) {
-        initialize(admin);
+    public fun init_for_testing(ctx: &mut TxContext) {
+        init(ctx);
     }
 }

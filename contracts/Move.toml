@@ -1,16 +1,9 @@
 [package]
 name = "NinjaRush"
-version = "1.0.0"
-authors = []
+edition = "2024.beta"
+
+[dependencies]
+One = { git = "https://github.com/one-chain-labs/onechain.git", subdir = "crates/sui-framework/packages/one-framework", rev = "main" }
 
 [addresses]
-ninja_rush = "0x1"  # Placeholder - will be replaced with actual address during deployment
-
-[dev-addresses]
-
-[dependencies.AptosFramework]
-git = "https://github.com/aptos-labs/aptos-core.git"
-rev = "aptos-release-v1.6"
-subdir = "aptos-move/framework/aptos-framework"
-
-[dev-dependencies]
+ninja_rush = "0x0"
