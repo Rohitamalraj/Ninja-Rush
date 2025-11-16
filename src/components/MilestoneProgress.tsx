@@ -57,10 +57,14 @@ export const MilestoneProgress: React.FC = () => {
     setClaiming(true);
     try {
       await exchangeForOCT(milestoneIndex);
-      alert(`Successfully claimed ${nextReward} OCT!`);
-    } catch (error) {
+      // Refresh balance after exchange
+      setTimeout(() => {
+        window.location.reload(); // Simple way to refresh all state
+      }, 2000);
+    } catch (error: unknown) {
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error';
       console.error('Failed to claim reward:', error);
-      alert('Failed to claim reward. Please try again.');
+      alert(`Failed to claim reward: ${errorMessage}`);
     } finally {
       setClaiming(false);
     }
@@ -73,8 +77,8 @@ export const MilestoneProgress: React.FC = () => {
   const canClaim = remaining <= 0;
 
   return (
-    <div className="fixed bottom-4 left-4 right-4 md:left-auto md:right-4 md:w-96 z-40">
-      <div className="bg-gray-900/95 backdrop-blur-md rounded-xl p-5 border border-gray-700 shadow-2xl">
+    <div className="fixed bottom-6 right-6 w-96 z-40">
+      <div className="bg-gradient-to-br from-gray-900 to-gray-800 backdrop-blur-md rounded-2xl p-6 border-2 border-purple-500/50 shadow-2xl">
         {/* Header */}
         <div className="flex items-center justify-between mb-4">
           <div>
