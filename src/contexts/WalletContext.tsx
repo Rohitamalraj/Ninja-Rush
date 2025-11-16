@@ -1,19 +1,8 @@
-import React, { createContext, useContext, useState, useEffect } from 'react';
+import React, { createContext, useContext, useState, useCallback, useEffect } from 'react';
 import type { ReactNode } from 'react';
-import { Aptos, AptosConfig, Network } from '@aptos-labs/ts-sdk';
-
-// OneChain testnet configuration
-const ONECHAIN_TESTNET_URL = 'https://rpc-testnet.onelabs.cc:443';
-
-// Contract addresses (will be updated after deployment)
-const CONTRACT_ADDRESS = import.meta.env.VITE_CONTRACT_ADDRESS || '0x1'; // Placeholder
-
-// Initialize Aptos client for OneChain
-const config = new AptosConfig({
-  fullnode: ONECHAIN_TESTNET_URL,
-  network: Network.CUSTOM,
-});
-const aptosClient = new Aptos(config);
+import { useCurrentAccount, useSignAndExecuteTransaction, useSuiClient } from '@mysten/dapp-kit';
+import { Transaction } from '@mysten/sui/transactions';
+import { CONTRACT_CONFIG, MILESTONES } from '../config/network';
 
 interface WalletContextType {
   connected: boolean;
@@ -23,11 +12,10 @@ interface WalletContextType {
     oct: number;
   };
   connecting: boolean;
-  connect: () => Promise<void>;
-  disconnect: () => void;
-  signAndSubmitTransaction: (transaction: unknown) => Promise<unknown>;
   claimNinjaTokens: (score: number) => Promise<void>;
   exchangeForOCT: (milestone: number) => Promise<void>;
+  submitScore: (score: number, enemiesKilled: number, powerUpsCollected: number) => Promise<void>;
+  refreshBalance: () => Promise<void>;
 }
 
 const WalletContext = createContext<WalletContextType | undefined>(undefined);
@@ -45,200 +33,201 @@ interface WalletProviderProps {
 }
 
 export const WalletProvider: React.FC<WalletProviderProps> = ({ children }) => {
-  const [connected, setConnected] = useState(false);
-  const [address, setAddress] = useState<string | null>(null);
+  const currentAccount = useCurrentAccount();
+  const suiClient = useSuiClient();
+  const { mutateAsync: signAndExecuteTransaction } = useSignAndExecuteTransaction();
+  
   const [balance, setBalance] = useState({ ninja: 0, oct: 0 });
-  const [connecting, setConnecting] = useState(false);
+  const [connecting] = useState(false);
 
-  const connect = async () => {
-    setConnecting(true);
+  const connected = !!currentAccount;
+  const address = currentAccount?.address || null;
+
+  // Fetch NINJA token balance
+  const refreshBalance = useCallback(async () => {
+    if (!address) return;
+
     try {
-      // Check if OneWallet is installed
-      if (!window.aptos) {
-        alert('Please install OneWallet extension first!');
-        window.open('https://www.onewallet.io/', '_blank');
-        setConnecting(false);
-        return;
-      }
-
-      // Request connection
-      const response = await window.aptos.connect();
-      
-      if (response.address) {
-        setAddress(response.address);
-        setConnected(true);
-        
-        // Store in localStorage
-        localStorage.setItem('walletAddress', response.address);
-        
-        // Fetch initial balances
-        await updateBalances(response.address);
-      }
-    } catch (error) {
-      console.error('Failed to connect wallet:', error);
-      alert('Failed to connect wallet. Please try again.');
-    } finally {
-      setConnecting(false);
-    }
-  };
-
-  const disconnect = () => {
-    setConnected(false);
-    setAddress(null);
-    setBalance({ ninja: 0, oct: 0 });
-    localStorage.removeItem('walletAddress');
-  };
-
-  const updateBalances = async (walletAddress: string) => {
-    try {
-      // Fetch NINJA token balance
-      const ninjaBalance = await aptosClient.view({
-        payload: {
-          function: `${CONTRACT_ADDRESS}::ninja_token::get_balance` as `${string}::${string}::${string}`,
-          functionArguments: [walletAddress],
-        },
+      // Get all coin objects owned by the user
+      const { data: coins } = await suiClient.getAllCoins({
+        owner: address,
       });
-      
-      // Fetch OCT balance (native token)
-      const resources = await aptosClient.getAccountResources({
-        accountAddress: walletAddress,
-      });
-      
-      const octResource = resources.find(
-        (r) => r.type === '0x1::coin::CoinStore<0x1::aptos_coin::AptosCoin>'
+
+      // Find NINJA tokens (will have type like 0x{packageId}::ninja_token::NINJA_TOKEN)
+      const ninjaCoins = coins.filter(coin => 
+        coin.coinType.includes('ninja_token::NINJA_TOKEN')
       );
-      
-      const octBalance = octResource ? Number((octResource.data as { coin: { value: string } }).coin.value) : 0;
-      
+
+      const ninjaBalance = ninjaCoins.reduce((sum, coin) => sum + BigInt(coin.balance), BigInt(0));
+
+      // Get OCT balance (native coin)
+      const octCoins = coins.filter(coin => 
+        coin.coinType.includes('oct::OCT') || coin.coinType === '0x2::sui::SUI'
+      );
+
+      const octBalance = octCoins.reduce((sum, coin) => sum + BigInt(coin.balance), BigInt(0));
+
       setBalance({
-        ninja: Number(ninjaBalance[0]) / 1000000, // 6 decimals
-        oct: octBalance / 100000000, // 8 decimals
+        ninja: Number(ninjaBalance) / 1_000_000, // 6 decimals
+        oct: Number(octBalance) / 1_000_000_000, // 9 decimals (MIST)
       });
     } catch (error) {
-      console.error('Failed to update balances:', error);
-      // Fallback to localStorage
-      const ninjaBalance = parseInt(localStorage.getItem('ninjaBalance') || '0');
-      const octBalance = parseInt(localStorage.getItem('octBalance') || '0');
-      
-      setBalance({
-        ninja: ninjaBalance,
-        oct: octBalance
-      });
+      console.error('Failed to fetch balances:', error);
     }
-  };
+  }, [address, suiClient]);
 
-  const signAndSubmitTransaction = async (payload: unknown) => {
-    if (!connected || !address) {
+  // Award NINJA tokens based on game score
+  const claimNinjaTokens = useCallback(async (score: number) => {
+    if (!address) {
       throw new Error('Wallet not connected');
     }
 
     try {
-      if (!window.aptos) {
-        throw new Error('Wallet not available');
-      }
+      const tx = new Transaction();
 
-      const pendingTransaction = await window.aptos.signAndSubmitTransaction(payload);
-      
-      // Wait for transaction confirmation
-      const txn = await aptosClient.waitForTransaction({
-        transactionHash: pendingTransaction.hash,
-      });
-      
-      // Update balances after transaction
-      await updateBalances(address);
-      
-      return txn;
-    } catch (error) {
-      console.error('Transaction failed:', error);
-      throw error;
-    }
-  };
-
-  // Claim NINJA tokens after game
-  const claimNinjaTokens = async (score: number) => {
-    if (!connected || !address) {
-      throw new Error('Wallet not connected');
-    }
-
-    try {
-      // Convert score to NINJA tokens (1:1 ratio)
-      const ninjaAmount = score * 1000000; // 6 decimals
-
-      const transaction = await aptosClient.transaction.build.simple({
-        sender: address,
-        data: {
-          function: `${CONTRACT_ADDRESS}::ninja_token::award_tokens`,
-          functionArguments: [address, ninjaAmount],
-        },
+      // Call award_tokens function
+      tx.moveCall({
+        target: `${CONTRACT_CONFIG.packageId}::ninja_token::award_tokens`,
+        arguments: [
+          tx.object(CONTRACT_CONFIG.ninjaTokenState), // NinjaTokenState shared object
+          tx.pure.address(address), // player address
+          tx.pure.u64(score), // score amount
+        ],
       });
 
-      await signAndSubmitTransaction(transaction);
+      const result = await signAndExecuteTransaction({
+        transaction: tx,
+      });
+
+      console.log('NINJA tokens claimed!', result);
       
-      console.log(`Claimed ${score} NINJA tokens!`);
+      // Refresh balance after transaction
+      await refreshBalance();
     } catch (error) {
       console.error('Failed to claim NINJA tokens:', error);
       throw error;
     }
-  };
+  }, [address, signAndExecuteTransaction, refreshBalance]);
 
-  // Exchange NINJA for OCT at milestone
-  const exchangeForOCT = async (milestone: number) => {
-    if (!connected || !address) {
+  // Exchange NINJA tokens for OCT at milestone
+  const exchangeForOCT = useCallback(async (milestoneId: number) => {
+    if (!address) {
       throw new Error('Wallet not connected');
     }
 
     try {
-      const transaction = await aptosClient.transaction.build.simple({
-        sender: address,
-        data: {
-          function: `${CONTRACT_ADDRESS}::token_exchange::exchange_at_milestone`,
-          functionArguments: [CONTRACT_ADDRESS, milestone],
-        },
+      // Get milestone config
+      const milestone = Object.values(MILESTONES).find(m => m.id === milestoneId);
+      if (!milestone) {
+        throw new Error('Invalid milestone');
+      }
+
+      // Get user's NINJA coins
+      const { data: coins } = await suiClient.getAllCoins({
+        owner: address,
       });
 
-      await signAndSubmitTransaction(transaction);
+      const ninjaCoins = coins.filter(coin => 
+        coin.coinType.includes('ninja_token::NINJA_TOKEN')
+      );
+
+      if (ninjaCoins.length === 0) {
+        throw new Error('No NINJA tokens found');
+      }
+
+      const tx = new Transaction();
+
+      // Merge all NINJA coins if multiple
+      const ninjaCoin = tx.object(ninjaCoins[0].coinObjectId);
+      if (ninjaCoins.length > 1) {
+        tx.mergeCoins(
+          ninjaCoin,
+          ninjaCoins.slice(1).map(c => tx.object(c.coinObjectId))
+        );
+      }
+
+      // Split the required amount for milestone
+      const requiredAmount = milestone.threshold * 1_000_000; // 6 decimals
+      const [paymentCoin] = tx.splitCoins(ninjaCoin, [tx.pure.u64(requiredAmount)]);
+
+      // Call exchange_at_milestone
+      tx.moveCall({
+        target: `${CONTRACT_CONFIG.packageId}::token_exchange::exchange_at_milestone`,
+        arguments: [
+          tx.object(CONTRACT_CONFIG.exchangeTreasury), // ExchangeTreasury shared object
+          tx.object(CONTRACT_CONFIG.ninjaTokenState), // NinjaTokenState shared object
+          paymentCoin, // Coin<NINJA_TOKEN> payment
+          tx.pure.u8(milestoneId), // milestone ID
+        ],
+      });
+
+      const result = await signAndExecuteTransaction({
+        transaction: tx,
+      });
+
+      console.log(`Exchanged for OCT at milestone ${milestoneId}!`, result);
       
-      console.log(`Exchanged NINJA for OCT at milestone ${milestone}!`);
+      // Refresh balance
+      await refreshBalance();
     } catch (error) {
       console.error('Failed to exchange tokens:', error);
       throw error;
     }
-  };
+  }, [address, suiClient, signAndExecuteTransaction, refreshBalance]);
 
-  // Auto-connect on mount if previously connected
-  useEffect(() => {
-    const savedAddress = localStorage.getItem('walletAddress');
-    if (savedAddress && window.aptos) {
-      connect();
+  // Submit score to leaderboard
+  const submitScore = useCallback(async (
+    score: number, 
+    enemiesKilled: number, 
+    powerUpsCollected: number
+  ) => {
+    if (!address) {
+      throw new Error('Wallet not connected');
     }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
 
-  // Listen for account changes
-  useEffect(() => {
-    if (window.aptos) {
-      window.aptos.onAccountChange((newAddress: string | null) => {
-        if (newAddress) {
-          setAddress(newAddress);
-          localStorage.setItem('walletAddress', newAddress);
-          updateBalances(newAddress);
-        } else {
-          disconnect();
-        }
+    try {
+      const tx = new Transaction();
+
+      // Call submit_score function
+      tx.moveCall({
+        target: `${CONTRACT_CONFIG.packageId}::leaderboard::submit_score`,
+        arguments: [
+          tx.object(CONTRACT_CONFIG.globalLeaderboard), // GlobalLeaderboard shared object
+          tx.pure.u64(score),
+          tx.pure.u64(enemiesKilled),
+          tx.pure.u64(powerUpsCollected),
+        ],
       });
+
+      const result = await signAndExecuteTransaction({
+        transaction: tx,
+      });
+
+      console.log('Score submitted to leaderboard!', result);
+    } catch (error) {
+      console.error('Failed to submit score:', error);
+      throw error;
     }
-  }, []);
+  }, [address, signAndExecuteTransaction]);
+
+  // Refresh balance when account changes
+  useEffect(() => {
+    if (connected && address) {
+      refreshBalance();
+    } else {
+      setBalance({ ninja: 0, oct: 0 });
+    }
+  }, [connected, address, refreshBalance]);
 
   const value: WalletContextType = {
     connected,
     address,
     balance,
     connecting,
-    connect,
-    disconnect,
-    signAndSubmitTransaction,
     claimNinjaTokens,
     exchangeForOCT,
+    submitScore,
+    refreshBalance,
   };
 
   return <WalletContext.Provider value={value}>{children}</WalletContext.Provider>;

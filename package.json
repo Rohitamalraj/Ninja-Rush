@@ -7,18 +7,12 @@
     "dev": "vite",
     "build": "tsc -b && vite build",
     "lint": "eslint .",
-    "preview": "vite preview",
-    "deploy:contracts": "tsx scripts/deploy.ts",
-    "compile:contracts": "cd contracts && aptos move compile"
+    "preview": "vite preview"
   },
   "dependencies": {
-    "@aptos-labs/ts-sdk": "^5.1.4",
-    "@aptos-labs/wallet-adapter-ant-design": "^5.3.2",
-    "@aptos-labs/wallet-adapter-core": "^7.8.0",
-    "@aptos-labs/wallet-adapter-react": "^7.2.2",
-    "@pontem/wallet-adapter-plugin": "^0.2.1",
-    "aptos": "^1.22.1",
-    "petra-plugin-wallet-adapter": "^0.4.5",
+    "@mysten/sui": "1.24.0",
+    "@mysten/dapp-kit": "^0.14.53",
+    "@tanstack/react-query": "^5.62.11",
     "phaser": "^3.90.0",
     "react": "^19.1.1",
     "react-dom": "^19.1.1",
