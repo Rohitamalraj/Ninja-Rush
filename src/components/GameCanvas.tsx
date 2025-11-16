@@ -1,10 +1,12 @@
 import { useEffect, useRef } from 'react';
 import Phaser from 'phaser';
 import { gameConfig } from '../game/config';
+import { useWallet } from '../contexts/WalletContext';
 
 export default function GameCanvas() {
   const gameRef = useRef<Phaser.Game | null>(null);
   const parentRef = useRef<HTMLDivElement>(null);
+  const { claimNinjaTokens } = useWallet();
 
   useEffect(() => {
     if (!parentRef.current) return;
@@ -16,6 +18,11 @@ export default function GameCanvas() {
     };
 
     gameRef.current = new Phaser.Game(config);
+
+    // Store wallet functions in game registry for scenes to access
+    if (gameRef.current) {
+      gameRef.current.registry.set('claimNinjaTokens', claimNinjaTokens);
+    }
 
     // Cleanup on unmount
     return () => {

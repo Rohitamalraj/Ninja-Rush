@@ -456,6 +456,14 @@ export default class GameScene extends Phaser.Scene {
     const totalGames = parseInt(localStorage.getItem('ninjaRush_totalGames') || '0');
     localStorage.setItem('ninjaRush_totalGames', (totalGames + 1).toString());
     
+    // Claim NINJA tokens from blockchain if wallet is connected
+    const claimNinjaTokens = this.registry.get('claimNinjaTokens');
+    if (claimNinjaTokens && this.score > 0) {
+      claimNinjaTokens(this.score).catch((error: Error) => {
+        console.error('Failed to claim NINJA tokens:', error);
+      });
+    }
+    
     // Show game over overlay on the same scene
     this.showGameOverOverlay(finalHighScore);
   }
