@@ -32,6 +32,13 @@ interface WalletProviderProps {
   children: ReactNode;
 }
 
+const ONECHAIN_TESTNET_CONFIG = {
+  id: 'onechain-testnet',
+  name: 'OneChain Testnet',
+  rpc: 'https://rpc-testnet.onelabs.cc:443',
+  chainId: '1bd5c965',
+};
+
 export const WalletProvider: React.FC<WalletProviderProps> = ({ children }) => {
   const currentAccount = useCurrentAccount();
   const suiClient = useSuiClient();
@@ -42,6 +49,61 @@ export const WalletProvider: React.FC<WalletProviderProps> = ({ children }) => {
 
   const connected = !!currentAccount;
   const address = currentAccount?.address || null;
+
+  // Check and switch to OneChain Testnet when wallet connects
+  useEffect(() => {
+    const ensureCorrectNetwork = async () => {
+      if (!connected) return;
+
+      try {
+        // Check current chain
+        const currentChainId = await suiClient.getChainIdentifier();
+        
+        if (currentChainId !== ONECHAIN_TESTNET_CONFIG.chainId) {
+          console.log('Wrong network detected. Attempting to add/switch to OneChain Testnet...');
+          
+          // Try to add the network via wallet_addChain (EIP-3085 style)
+          try {
+            // @ts-expect-error - Using wallet API
+            if (window.oneWallet) {
+              // @ts-expect-error - OneWallet API
+              await window.oneWallet.request({
+                method: 'wallet_addChain',
+                params: [{
+                  chainId: ONECHAIN_TESTNET_CONFIG.chainId,
+                  chainName: ONECHAIN_TESTNET_CONFIG.name,
+                  rpcUrls: [ONECHAIN_TESTNET_CONFIG.rpc],
+                  nativeCurrency: {
+                    name: 'OCT',
+                    symbol: 'OCT',
+                    decimals: 9,
+                  },
+                }],
+              });
+              console.log('Successfully added OneChain Testnet to wallet');
+            } else {
+              console.warn('OneWallet API not available. Please manually add OneChain Testnet.');
+              console.log('Network config:', ONECHAIN_TESTNET_CONFIG);
+            }
+          } catch (addError) {
+            // Network might already exist, try to switch
+            const error = addError as { code?: number; message?: string };
+            if (error?.code === 4902) {
+              console.log('Network already exists, attempting to switch...');
+            } else {
+              console.error('Failed to add network:', addError);
+            }
+          }
+        } else {
+          console.log('Already connected to OneChain Testnet');
+        }
+      } catch (error) {
+        console.error('Failed to check/switch network:', error);
+      }
+    };
+
+    ensureCorrectNetwork();
+  }, [connected, suiClient]);
 
   // Fetch NINJA token balance
   const refreshBalance = useCallback(async () => {
@@ -83,9 +145,13 @@ export const WalletProvider: React.FC<WalletProviderProps> = ({ children }) => {
     }
 
     try {
+      console.log('Building transaction to claim', score, 'NINJA tokens');
+      console.log('Contract config:', CONTRACT_CONFIG);
+      console.log('Player address:', address);
+      
       const tx = new Transaction();
 
-      // Set gas budget explicitly
+      // Set gas budget
       tx.setGasBudget(10000000); // 0.01 OCT
 
       // Call award_tokens function
@@ -93,14 +159,40 @@ export const WalletProvider: React.FC<WalletProviderProps> = ({ children }) => {
         target: `${CONTRACT_CONFIG.packageId}::ninja_token::award_tokens`,
         arguments: [
           tx.object(CONTRACT_CONFIG.ninjaTokenState), // NinjaTokenState shared object
-          tx.pure.address(address), // player address
-          tx.pure.u64(score), // score amount
+          tx.pure.address(address), // player address (bcs encoded)
+          tx.pure.u64(score), // score amount (bcs encoded)
         ],
       });
 
-      const result = await signAndExecuteTransaction({
-        transaction: tx,
-      });
+      console.log('Transaction built successfully');
+      console.log('Attempting dry run to validate...');
+      
+      // Dry run to catch errors before signing
+      try {
+        const dryRunResult = await suiClient.dryRunTransactionBlock({
+          transactionBlock: await tx.build({ client: suiClient }),
+        });
+        console.log('Dry run successful:', dryRunResult);
+        
+        if (dryRunResult.effects.status.status !== 'success') {
+          throw new Error(`Transaction will fail: ${dryRunResult.effects.status.error || 'Unknown error'}`);
+        }
+      } catch (dryRunError) {
+        console.error('Dry run failed:', dryRunError);
+        throw new Error(`Transaction validation failed. ${dryRunError instanceof Error ? dryRunError.message : 'Check console for details'}`);
+      }
+
+      console.log('Sending to wallet for signing...');
+      const result = await signAndExecuteTransaction(
+        {
+          transaction: tx,
+        },
+        {
+          onSuccess: (result) => {
+            console.log('Transaction successful:', result);
+          },
+        }
+      );
 
       console.log('NINJA tokens claimed!', result);
       
@@ -108,9 +200,20 @@ export const WalletProvider: React.FC<WalletProviderProps> = ({ children }) => {
       await refreshBalance();
     } catch (error) {
       console.error('Failed to claim NINJA tokens:', error);
+      
+      // Provide helpful error messages
+      if (error instanceof Error) {
+        if (error.message.includes('endpoints failed') || error.message.includes('fetch')) {
+          throw new Error('Network error: Unable to connect to OneChain. Please verify OneWallet is connected to OneChain Testnet (RPC: https://rpc-testnet.onelabs.cc:443)');
+        }
+        if (error.message.includes('Rejected') || error.message.includes('User rejected')) {
+          throw new Error('Transaction was rejected');
+        }
+      }
+      
       throw error;
     }
-  }, [address, signAndExecuteTransaction, refreshBalance]);
+  }, [address, signAndExecuteTransaction, refreshBalance, suiClient]);
 
   // Exchange NINJA tokens for OCT at milestone
   const exchangeForOCT = useCallback(async (milestoneId: number) => {
