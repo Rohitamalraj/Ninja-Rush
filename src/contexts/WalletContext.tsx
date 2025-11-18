@@ -15,6 +15,7 @@ interface WalletContextType {
   claimNinjaTokens: (score: number) => Promise<void>;
   exchangeForOCT: (milestone: number) => Promise<void>;
   submitScore: (score: number, enemiesKilled: number, powerUpsCollected: number) => Promise<void>;
+  getLeaderboard: () => Promise<any[]>;
   refreshBalance: () => Promise<void>;
 }
 
@@ -165,24 +166,8 @@ export const WalletProvider: React.FC<WalletProviderProps> = ({ children }) => {
       });
 
       console.log('Transaction built successfully');
-      console.log('Attempting dry run to validate...');
-      
-      // Dry run to catch errors before signing
-      try {
-        const dryRunResult = await suiClient.dryRunTransactionBlock({
-          transactionBlock: await tx.build({ client: suiClient }),
-        });
-        console.log('Dry run successful:', dryRunResult);
-        
-        if (dryRunResult.effects.status.status !== 'success') {
-          throw new Error(`Transaction will fail: ${dryRunResult.effects.status.error || 'Unknown error'}`);
-        }
-      } catch (dryRunError) {
-        console.error('Dry run failed:', dryRunError);
-        throw new Error(`Transaction validation failed. ${dryRunError instanceof Error ? dryRunError.message : 'Check console for details'}`);
-      }
-
       console.log('Sending to wallet for signing...');
+      
       const result = await signAndExecuteTransaction(
         {
           transaction: tx,
@@ -195,14 +180,21 @@ export const WalletProvider: React.FC<WalletProviderProps> = ({ children }) => {
       );
 
       console.log('NINJA tokens claimed!', result);
+      console.log('Transaction Digest:', result.digest);
+      console.log('View on Explorer: https://onescan.cc/testnet/transactionBlocksDetail?digest=' + result.digest);
       
       // Refresh balance after transaction
       await refreshBalance();
+      
+      return result.digest;
     } catch (error) {
       console.error('Failed to claim NINJA tokens:', error);
       
       // Provide helpful error messages
       if (error instanceof Error) {
+        if (error.message.includes('No valid gas coins') || error.message.includes('Insufficient gas')) {
+          throw new Error('Insufficient OCT for gas fees. Please get testnet OCT from the faucet to pay for transactions.');
+        }
         if (error.message.includes('endpoints failed') || error.message.includes('fetch')) {
           throw new Error('Network error: Unable to connect to OneChain. Please verify OneWallet is connected to OneChain Testnet (RPC: https://rpc-testnet.onelabs.cc:443)');
         }
@@ -213,7 +205,7 @@ export const WalletProvider: React.FC<WalletProviderProps> = ({ children }) => {
       
       throw error;
     }
-  }, [address, signAndExecuteTransaction, refreshBalance, suiClient]);
+  }, [address, signAndExecuteTransaction, refreshBalance]);
 
   // Exchange NINJA tokens for OCT at milestone
   const exchangeForOCT = useCallback(async (milestoneId: number) => {
@@ -322,6 +314,53 @@ export const WalletProvider: React.FC<WalletProviderProps> = ({ children }) => {
     }
   }, [address, signAndExecuteTransaction]);
 
+  // Get leaderboard entries
+  const getLeaderboard = useCallback(async () => {
+    try {
+      console.log('Fetching leaderboard from:', CONTRACT_CONFIG.globalLeaderboard);
+      
+      // Get the GlobalLeaderboard object
+      const leaderboardObject = await suiClient.getObject({
+        id: CONTRACT_CONFIG.globalLeaderboard,
+        options: {
+          showContent: true,
+        },
+      });
+
+      console.log('Leaderboard object:', leaderboardObject);
+
+      if (leaderboardObject.data?.content?.dataType === 'moveObject') {
+        const fields = (leaderboardObject.data.content as any).fields;
+        console.log('Leaderboard fields:', fields);
+        console.log('Top scores:', fields.top_scores);
+        console.log('Daily scores:', fields.daily_scores);
+        
+        // The leaderboard has top_scores as an array
+        const topScores = fields.top_scores || [];
+        
+        if (topScores.length > 0) {
+          const entries = topScores.map((scoreEntry: any) => {
+            return {
+              player: scoreEntry.fields?.player || scoreEntry.player,
+              score: parseInt(scoreEntry.fields?.score || scoreEntry.score),
+              enemiesKilled: parseInt(scoreEntry.fields?.enemies_killed || scoreEntry.enemies_killed || 0),
+              powerUpsCollected: parseInt(scoreEntry.fields?.power_ups_collected || scoreEntry.power_ups_collected || 0),
+              timestamp: parseInt(scoreEntry.fields?.timestamp || scoreEntry.timestamp || Date.now()),
+            };
+          });
+          
+          console.log('Parsed leaderboard entries:', entries);
+          return entries;
+        }
+      }
+
+      return [];
+    } catch (error) {
+      console.error('Failed to fetch leaderboard:', error);
+      return [];
+    }
+  }, [suiClient]);
+
   // Refresh balance when account changes
   useEffect(() => {
     if (connected && address) {
@@ -339,6 +378,7 @@ export const WalletProvider: React.FC<WalletProviderProps> = ({ children }) => {
     claimNinjaTokens,
     exchangeForOCT,
     submitScore,
+    getLeaderboard,
     refreshBalance,
   };
 
